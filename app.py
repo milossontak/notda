@@ -370,7 +370,7 @@ async def get_events_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Event API - Přijaté eventy</title>
+        <title>Demo Event API v.2 - Přijaté platby</title>
         <style>
             * {
                 margin: 0;
@@ -648,7 +648,7 @@ async def get_events_page():
     </head>
     <body>
         <div class="container">
-            <h1>Event API - Přijaté eventy</h1>
+            <h1>Event API v2.0 - Přijaté platby</h1>
             
             <div class="stats">
                 <div class="stat-card">
