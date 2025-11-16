@@ -1,0 +1,412 @@
+openapi: 3.0.0
+info:
+  title: "Event API"
+  description: "3rd party event API for receiving subscribed events."
+  version: "2.0.0"
+tags:
+  - name: Events
+  - name: Diagnostics
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /subscriptions/{subscriptionId}/events:
+    post:
+      tags:
+        - Events
+      summary: "Endpoint for receiving subscribed events"
+      description: "Endpoint for receiving subscribed events. Time-out response will result in the same scenario as HTTP 500 Status Code."
+      operationId: receiveEvent
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/SubscriptionId'
+        - name: Accept-Language
+          in: header
+          description: "Language localization for response values."
+          schema:
+            type: string
+            enum:
+              - CZ
+              - EN
+            default: CZ
+            pattern: '^[A-Za-z]{2}$'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventPayload'
+      responses:
+        '204':
+          description: "Event received"
+        '400':
+          description: "Invalid request header/parameter (missing header/parameter or wrong header/parameter value)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: "Error code results in halting event notifications. Subscription will be removed from subscriptions processing. Subscription will get status STOPPED."
+        '403':
+          description: "Error code results in halting event notifications. Subscription will be removed from subscriptions processing. Subscription will get status STOPPED."
+        '404':
+          description: "Unknown subscription ID. Error code results in halting event notifications. Subscription will be removed from subscriptions processing. Subscription will get status STOPPED."
+        '500':
+          description: 'Unexpected internal rest error. Error code results in halting event notifications for a period of time - circuit breaker will take place. Subscription will get status SUSPENDED. Repeated error response will result in the subscription being removed permanently, status STOPPED'
+  /version:
+    get:
+      summary: "API implementation version. Must return 2.0 for this API definition."
+      description: "API implementation version. Must return 2.0 for this API definition. Error HTTP status code or time-out response will result in new subscriptions being rejected."
+      operationId: getApiVersion
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      tags:
+        - Diagnostics
+      responses:
+        '200':
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+        '400':
+          description: "Invalid request header/parameter (missing header/parameter or wrong header/parameter value)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: "New subscription will be rejected."
+        '403':
+          description: "New subscription will be rejected."
+        '404':
+          description: "API implementation not found. New subscription will be rejected."
+        '500':
+          description: "Unexpected internal rest error. New subscription will be rejected."
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      description: "Event API authorization token - provided during creation of the subscription"
+      type: apiKey
+      name: x-api-key
+      in: header
+
+  parameters:
+    CorrelationId:
+      name: x-correlation-id
+      in: header
+      description: "Correlation ID represented as GUID 128-bit (8-4-4-4-12) is a generated unique identifier of the request, which stays the same through all the systems/applications involved. Its intended use is for troubleshooting purposes"
+      example: "71f415f4-412d-4c55-af05-15d1e0389f8f"
+      required: true
+      schema:
+        type: string
+        pattern: '^(\{{0,1}([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}\}{0,1})$'
+    SubscriptionId:
+      name: subscriptionId
+      in: path
+      required: true
+      description: "Subscription ID. Format: GUID 128-bit: 8-4-4-4-12"
+      example: "71f415f4-412d-4c55-af05-15d1e0389f8f"
+      schema:
+        type: string
+        pattern: '^(\{{0,1}([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}\}{0,1})$'
+
+  schemas:
+    VersionResponse:
+      type: object
+      description: "Version of the API"
+      properties:
+        version:
+          type: string
+          example: "2.0"
+          minLength: 3
+          maxLength: 5
+
+    EventPayload:
+      type: object
+      description: "Subscribed events payload"
+      properties:
+        eventCount:
+          description: "Number of events since the last events notification."
+          type: integer
+        transactionAdvices:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionAdvice'
+        bookTransactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookTransaction'
+        cardAuthorizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/CardAuthorization'
+
+    TransactionAdvice:
+      allOf:
+      - $ref: '#/components/schemas/BookingInformation'
+      - $ref: '#/components/schemas/GenericTransactionData'
+
+    CardAuthorization:
+      allOf:
+      - type: object
+        description: "Card specific details"
+        properties:
+          holdExpirationDate:
+            description: "Expiration date of a pending state transaction. ISO 8601 format."
+            type: string
+            format: date
+            example: "2022-05-03"
+      - $ref: '#/components/schemas/GenericTransactionData'
+
+    BookTransaction:
+      allOf:
+      - $ref: '#/components/schemas/BookingInformation'
+      - $ref: '#/components/schemas/GenericTransactionData'
+
+    BookingInformation:
+      description: "Booking details."
+      type: object
+      properties:
+        transactionType:
+          $ref: '#/components/schemas/BookTransactionType'
+        bookingDate:
+          description: "The date the payment was processed/accounted by bank in ISODate format (''YYYY-MM-DD'')."
+          example: "2019-04-23"
+          type: string
+          format: date
+      
+    GenericTransactionData:
+      description: "Single account transaction details."
+      type: object
+      required:
+        - lastUpdated
+        - accountType
+        - iban
+        - amount
+        - creditDebitIndicator
+        - transactionType
+      properties:
+        lastUpdated:
+          description: "The last transaction history update. Datetime is in ISO 8601 format."
+          type: string
+          format: date-time
+        entryReference:
+          $ref: '#/components/schemas/EntryReference'
+        iban:
+          $ref: '#/components/schemas/IBAN'
+        creditDebitIndicator:
+          $ref: '#/components/schemas/CreditDebitIndicator'
+        bankTransactionCode:
+          $ref: '#/components/schemas/BankTransactionCode'
+        amount:
+          $ref: '#/components/schemas/CurrencyAmount'
+        valueDate:
+          description: "The payment due date in ISODate format (''YYYY-MM-DD'')."
+          example: "2019-04-24"
+          type: string
+          format: date
+        instructed:
+          $ref: '#/components/schemas/CurrencyAmount'
+        reversalIndicator:
+          $ref: '#/components/schemas/ReversalIndicator'
+        counterParty:
+          $ref: '#/components/schemas/TransactionCounterparty'
+        references:
+          $ref: '#/components/schemas/TransactionReferences'
+        additionalTransactionInformation:
+          description: "Additional information about transaction provided by bank"
+          type: string
+          maxLength: 500
+          example: "8201701069595 BIC: GIBACZPXXXX; #71A# SHA ZALOHA DLE SMLOUVY O DODAVKACH"
+
+    IBAN:
+      title: IBAN
+      description: "International Bank Account Number."
+      example: "CZ9501000000001234567899"
+      type: string
+      maxLength: 34
+    AccountNumber:
+      title: AccountNumber
+      description: "Account Number in national format (without bank code)."
+      example: "1234567899"
+      type: string
+      maxLength: 34
+    BankCode:
+      title: BankCode
+      description: "Bank code in national format."
+      example: "0100"
+      type: string
+      maxLength: 4
+    BankIdentifierCode:
+      title: BankIdentifierCode
+      description: "International unique bank identifier (SWIFT/BIC)."
+      example: "KOMBCZPPXXX"
+      type: string
+      maxLength: 11
+    CurrencyISO:
+      title: CurrencyISO
+      description: "ISO code for the currency."
+      example: "EUR"
+      type: string
+      maxLength: 3
+    CreditDebitIndicator:
+      title: CreditDebitIndicator
+      description: |
+        Indicates whether the account balance is positive or negative
+
+        CODE:
+        * CREDIT - Accontunt balance is &gt; 0 or Account ballance = 0
+        * DEBIT - Account balance is &lt; 0
+      example: "CREDIT"
+      type: string
+      enum:
+        - CREDIT
+        - DEBIT
+    TransactionReferences:
+      description: "Transaction references"
+      type: object
+      properties:
+        accountServicer:
+          description: >
+            Unique transaction identification ID (not change during the transaction processing). This ID can be used for transaction 
+            pairing (same ID = same transaction).
+          type: string
+          example: "SGWD000000653288"
+        endToEndIdentification:
+          description: "Unique identification of the payment/transaction provided by the client who initiated the payment"
+          type: string
+          example: "E2E-6xgp25qD46"
+        variable:
+          description: "Variable symbol"
+          type: string
+          example: "2018001"
+        constant:
+          description: "Constant symbol"
+          type: string
+          example: "0514"
+        specific:
+          description: "Specific symbol"
+          type: string
+          example: "708090"
+        receiver:
+          description: "Message to a payee / reference to receiver."
+          type: string
+          example: "Zpráva pro příjemce"
+        myDescription:
+            description: "Description for me"
+            type: string
+            example: "Zpráva pro mě"
+
+    EntryReference:
+      title: EntryReference
+      description: >
+        Identification ID assigned by bank. This ID does not identify the transaction directly (it is not unique transaction ID;
+        ID changes during transaction processing). For pairing transactions can be used references.accountServicer (unique ID for
+        the transaction lifetime).
+      example: "KB-1234567890"
+      type: string
+
+    TransactionCounterparty:
+      description: "Transaction counterparty details. Not all fields may be available for all transactions (e.g. for card transaction)."
+      type: object
+      properties:
+        iban:
+          $ref: '#/components/schemas/IBAN'
+        name:
+          description: "Name of the counterparty"
+          type: string
+          example: "Tesco Stores ČR a.s."
+        accountNo:
+          $ref: '#/components/schemas/AccountNumber'
+        bankBic:
+          $ref: '#/components/schemas/BankIdentifierCode'
+        bankCode:
+          $ref: '#/components/schemas/BankCode'
+        bankName:
+          description: "Counterparty account servicing institution name."
+          type: string
+          example: "Česká spořitelna, a.s."
+    BookTransactionType:
+      type: string
+      example: "DOMESTIC"
+      enum:
+        - INTEREST
+        - FEE
+        - DOMESTIC
+        - FOREIGN
+        - SEPA
+        - CASH
+        - CARD
+        - OTHER
+    CurrencyAmount:
+      description: "Amount with ISO currency."
+      type: object
+      required:
+        - value
+        - currency
+      properties:
+        value:
+          description: "The amount."
+          example: 10000
+          type: number
+        currency:
+          $ref: '#/components/schemas/CurrencyISO'
+    BankTransactionCode:
+      description: Transaction code
+      type: object
+      properties:
+        code:
+          description: Transaction code
+          example: "1000010"
+          type: string
+          maxLength: 35
+        issuer:
+          $ref: '#/components/schemas/BankTransactionCodeIssuer'
+    BankTransactionCodeIssuer:
+      description: |
+        The identification of the issuer of the transaction code
+        - CBA - Code of the transaction defined by CBA (Czech Bank Association) associated with specific payment. Every bank uses its own LOV for transaction codes which is derived from 1st to 3rd level of the transaction codes LOV defined by CBA standar for CAMT.053. For more information see https://mojebanka.kb.cz/file/cs/format_xml_vypis_ciselnik_trn.pdf
+        - OTHER
+      example: CBA
+      type: string
+      enum:
+        - CBA
+        - OTHER
+    ReversalIndicator:
+      type: boolean
+      title: ReversalIndicator
+      example: false
+      description: "Indicates whether the transaction is of “storno” type or not."
+
+    ErrorResponse:
+      type: object
+      description: "The parent element contains a collection of all error states."
+      properties:
+        errors:
+          items:
+            $ref: '#/components/schemas/Error'
+      required:
+        - errors
+    Error:
+      type: object
+      description: "Specific error."
+      required:
+        - message
+      properties:
+        code:
+          type: string
+          description: "Optional error code (only for business exceptions)."
+        additionalInfo:
+          type: object
+          description: "Optional information about error. Contains additional information specific to a particular error."
+          properties:
+            parameterName:
+              type: string
+              description: "The input parameter name."
+            rejectedValue:
+              type: string
+              description: "Rejected value of the parameter"
+        message:
+          type: string
+          description: "Text description of the error. It is not meant to be interpreted to the end user but to enrich the error log."

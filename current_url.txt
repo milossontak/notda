@@ -1,0 +1,26 @@
+# Aktuální veřejná URL vašeho API
+
+## Cloudflare Tunnel URL (bez warning page):
+https://collections-palm-reputation-inf.trycloudflare.com
+
+## Ngrok URL (s warning page - vyžaduje hlavičku ngrok-skip-browser-warning):
+https://javier-multisaccate-calculably.ngrok-free.dev
+
+## Lokální URL:
+http://localhost:8000
+
+## Použití:
+
+### Version endpoint:
+curl -X GET "https://collections-palm-reputation-inf.trycloudflare.com/version" \
+  -H "x-api-key: 123456" \
+  -H "x-correlation-id: 71f415f4-412d-4c55-af05-15d1e0389f8f"
+
+### Events endpoint:
+curl -X POST "https://collections-palm-reputation-inf.trycloudflare.com/subscriptions/{subscriptionId}/events" \
+  -H "x-api-key: 123456" \
+  -H "x-correlation-id: 71f415f4-412d-4c55-af05-15d1e0389f8f" \
+  -H "Accept-Language: CZ" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+
