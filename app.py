@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Header, HTTPException, Path, Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import (
     http_exception_handler,
@@ -13,6 +13,9 @@ import traceback
 import os
 import logging
 import json
+import random
+import qrcode
+import io
 from collections import deque
 
 app = FastAPI(
@@ -112,6 +115,9 @@ events_storage = deque(maxlen=1000)  # Uchovává posledních 1000 eventů
 
 # Ukládání historie všech příchozích požadavků
 request_history = deque(maxlen=500)  # Uchovává posledních 500 požadavků
+
+# Ukládání sledovaných plateb (VS -> payment info)
+tracked_payments = {}  # {vs: {"iban": "...", "amount": ..., "created": "...", "status": "pending|paid"}}
 
 # API klíč pro autentizaci
 # Můžete nastavit buď zde, nebo přes environment variable API_KEY
@@ -357,6 +363,23 @@ async def receive_event(
         "payload": payload.model_dump() if payload else None
     }
     events_storage.append(event_data)
+    
+    # Kontrola, zda příchozí event obsahuje platbu se sledovaným VS
+    if payload:
+        transactions = []
+        if payload.bookTransactions:
+            transactions.extend(payload.bookTransactions)
+        if payload.transactionAdvices:
+            transactions.extend(payload.transactionAdvices)
+        
+        for tx in transactions:
+            if tx.references and tx.references.variable:
+                vs = tx.references.variable
+                if vs in tracked_payments:
+                    # Aktualizovat status platby
+                    tracked_payments[vs]["status"] = "paid"
+                    tracked_payments[vs]["paid_at"] = datetime.now().isoformat()
+                    tracked_payments[vs]["transaction"] = tx.model_dump() if hasattr(tx, 'model_dump') else tx
     
     return None  # 204 No Content
 
@@ -672,10 +695,29 @@ async def get_events_page():
             <div class="controls">
                 <button onclick="loadEvents()">Obnovit</button>
                 <button onclick="clearEvents()">Vymazat vše</button>
+                <button onclick="createQRPayment()" style="background-color: #27ae60;">Vytvořit QR platbu</button>
                 <label>
                     <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh()"> Automatické obnovování
                 </label>
             </div>
+            
+            <div id="qr-payment-section" style="display: none; margin-bottom: 30px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h2 style="margin-bottom: 15px; color: #2c3e50;">QR Platba</h2>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                    <div>
+                        <img id="qr-image" src="" alt="QR kód" style="max-width: 300px; border: 2px solid #ddd; border-radius: 5px; padding: 10px; background: white;">
+                    </div>
+                    <div style="flex: 1;">
+                        <div id="qr-payment-info" style="margin-bottom: 15px;"></div>
+                        <div style="margin-top: 15px;">
+                            <strong>SPAYD řetězec:</strong>
+                            <pre id="qr-spayd" style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 12px; word-break: break-all; margin-top: 5px;"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="tracked-payments" style="margin-bottom: 30px;"></div>
             
             <div id="events-container" class="events-list">
                 <div class="loading">Načítání...</div>
@@ -983,6 +1025,158 @@ async def get_events_page():
             
             // Automatická kontrola nových eventů každé 2 sekundy
             snackbarCheckInterval = setInterval(checkForNewEvents, 2000);
+            
+            // Funkce pro vytvoření QR platby
+            async function createQRPayment() {
+                const amount = prompt('Zadejte částku (nechte prázdné pro libovolnou částku):');
+                const message = prompt('Zadejte zprávu pro příjemce:', 'Platba');
+                
+                if (message === null) {
+                    return; // Uživatel zrušil
+                }
+                
+                try {
+                    const params = new URLSearchParams();
+                    if (amount && amount.trim()) {
+                        params.append('amount', amount.trim());
+                    }
+                    if (message && message.trim()) {
+                        params.append('message', message.trim());
+                    }
+                    
+                    console.log('Vytvářím QR platbu s parametry:', params.toString());
+                    
+                    const response = await fetch(`/qr-payment?${params.toString()}`);
+                    console.log('Response status:', response.status);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('Chyba odpovědi:', errorText);
+                        alert(`Chyba při vytváření QR kódu: ${response.status} ${response.statusText}`);
+                        return;
+                    }
+                    
+                    const blob = await response.blob();
+                    console.log('Blob vytvořen, velikost:', blob.size, 'typ:', blob.type);
+                    
+                    if (blob.size === 0) {
+                        alert('QR kód je prázdný');
+                        return;
+                    }
+                    
+                    const qrImage = document.getElementById('qr-image');
+                    const qrSection = document.getElementById('qr-payment-section');
+                    
+                    if (!qrImage || !qrSection) {
+                        console.error('Elementy pro QR kód nebyly nalezeny');
+                        alert('Chyba: Elementy pro zobrazení QR kódu nebyly nalezeny');
+                        return;
+                    }
+                    
+                    // Použít FileReader pro převod blobu na data URL (spolehlivější)
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        qrImage.src = e.target.result;
+                        qrSection.style.display = 'block';
+                        console.log('QR kód úspěšně načten jako data URL');
+                    };
+                    reader.onerror = function() {
+                        console.error('Chyba při čtení blobu');
+                        // Fallback na ObjectURL
+                        const imageUrl = URL.createObjectURL(blob);
+                        qrImage.src = imageUrl;
+                        qrSection.style.display = 'block';
+                    };
+                    reader.readAsDataURL(blob);
+                    
+                    qrImage.onerror = function() {
+                        console.error('Chyba při načítání obrázku QR kódu');
+                        alert('Chyba při načítání QR kódu. Zkuste obnovit stránku.');
+                    };
+                    
+                    qrImage.onload = function() {
+                        console.log('QR kód úspěšně zobrazen');
+                    };
+                    
+                    // Scroll na QR sekci
+                    qrSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    
+                    // Načíst informace o platbě
+                    setTimeout(() => {
+                        loadPaymentInfo();
+                        loadTrackedPayments();
+                    }, 500);
+                    
+                } catch (error) {
+                    console.error('Chyba při vytváření QR platby:', error);
+                    alert(`Chyba při vytváření QR kódu: ${error.message}`);
+                }
+            }
+            
+            async function loadPaymentInfo() {
+                try {
+                    const response = await fetch('/qr-payment-info');
+                    const data = await response.json();
+                    
+                    if (data.payments && data.payments.length > 0) {
+                        const payment = data.payments[data.payments.length - 1]; // Poslední platba
+                        document.getElementById('qr-payment-info').innerHTML = `
+                            <div><strong>Variabilní symbol:</strong> ${payment.vs}</div>
+                            <div><strong>Částka:</strong> ${payment.amount ? payment.amount + ' CZK' : 'Libovolná'}</div>
+                            <div><strong>Status:</strong> <span style="color: ${payment.status === 'paid' ? '#27ae60' : '#e74c3c'}; font-weight: bold;">${payment.status === 'paid' ? '✓ ZAPLACENO' : '⏳ ČEKÁNÍ'}</span></div>
+                            ${payment.paid_at ? `<div><strong>Zaplaceno:</strong> ${formatDate(payment.paid_at)}</div>` : ''}
+                        `;
+                        document.getElementById('qr-spayd').textContent = payment.spayd;
+                    }
+                } catch (error) {
+                    console.error('Chyba při načítání informací o platbě:', error);
+                }
+            }
+            
+            async function loadTrackedPayments() {
+                try {
+                    const response = await fetch('/qr-payment-info');
+                    const data = await response.json();
+                    const container = document.getElementById('tracked-payments');
+                    
+                    if (data.payments && data.payments.length > 0) {
+                        container.innerHTML = `
+                            <h2 style="margin-bottom: 15px; color: #2c3e50;">Sledované platby</h2>
+                            <div style="display: grid; gap: 10px;">
+                                ${data.payments.reverse().map(payment => `
+                                    <div style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid ${payment.status === 'paid' ? '#27ae60' : '#e74c3c'};">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <div><strong>VS:</strong> ${payment.vs}</div>
+                                                <div><strong>Částka:</strong> ${payment.amount ? payment.amount + ' CZK' : 'Libovolná'}</div>
+                                                <div><strong>Vytvořeno:</strong> ${formatDate(payment.created)}</div>
+                                                ${payment.paid_at ? `<div><strong>Zaplaceno:</strong> ${formatDate(payment.paid_at)}</div>` : ''}
+                                            </div>
+                                            <div style="font-size: 24px; font-weight: bold; color: ${payment.status === 'paid' ? '#27ae60' : '#e74c3c'};">
+                                                ${payment.status === 'paid' ? '✓' : '⏳'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    } else {
+                        container.innerHTML = '';
+                    }
+                } catch (error) {
+                    console.error('Chyba při načítání sledovaných plateb:', error);
+                }
+            }
+            
+            // Kontrola plateb při kontrole nových eventů
+            const originalCheckForNewEvents = checkForNewEvents;
+            checkForNewEvents = async function() {
+                await originalCheckForNewEvents();
+                loadTrackedPayments();
+            };
+            
+            // Načíst sledované platby při načtení stránky
+            loadTrackedPayments();
         </script>
     </body>
     </html>
@@ -1017,6 +1211,158 @@ async def clear_request_history():
     """API endpoint pro smazání historie požadavků."""
     request_history.clear()
     return {"message": "Historie požadavků byla smazána"}
+
+
+def url_encode_spayd(value: str) -> str:
+    """
+    Zakóduje hodnotu podle SPAYD standardu (URL encoding pro speciální znaky).
+    Podle standardu: povolené znaky jsou 0-9, A-Z (velká), mezera, $, %, *, +, -, ., /, :
+    Ostatní znaky se kódují pomocí URL encoding.
+    """
+    import urllib.parse
+    # Podle standardu: povolené znaky jsou alfanumerické + některé speciální
+    # Pro efektivní uložení do QR kódu použít pouze povolené znaky
+    # Ostatní znaky zakódovat pomocí URL encoding
+    # Safe znaky: povolené znaky kromě těch, které mají speciální význam v SPAYD (*, :)
+    encoded = urllib.parse.quote(value, safe='')
+    return encoded
+
+
+def generate_spayd_string(iban: str, amount: Optional[float] = None, vs: Optional[str] = None, message: Optional[str] = None) -> str:
+    """
+    Vygeneruje SPAYD řetězec podle standardu QR platby verze 1.2.
+    Standard: https://qr-platba.cz/wp-content/uploads/1645-standard-qr-v1-2-cerven-2021.pdf
+    
+    Pro tuzemský platební styk v CZK:
+    - Účet musí být český IBAN (začíná CZ)
+    - Měna musí být CZK
+    """
+    # Verze standardu 1.2 (účinná od 1. ledna 2022)
+    # Formát hlavičky: SPD*1.2* (s hvězdičkou na konci verze)
+    parts = ["SPD*1.2*"]
+    
+    # ACC - povinný (IBAN)
+    # Formát: ACC:IBAN* nebo ACC:IBAN+BIC*
+    # Pro české účty: IBAN začíná CZ
+    # Český IBAN: CZ + 2 kontrolní číslice + 10-24 číslic (celkem 14-28 znaků)
+    iban_clean = iban.strip().upper().replace(' ', '')
+    if not iban_clean.startswith('CZ'):
+        raise ValueError(f"Pro tuzemský platební styk v CZK musí být IBAN český (začíná CZ), zadaný: {iban_clean}")
+    
+    # Validace délky českého IBAN (minimálně 14 znaků, maximálně 28 znaků)
+    if len(iban_clean) < 14 or len(iban_clean) > 28:
+        raise ValueError(f"Český IBAN musí mít délku 14-28 znaků, zadaný má {len(iban_clean)}: {iban_clean}")
+    
+    parts.append(f"ACC:{iban_clean}*")
+    
+    # AM - částka (volitelná)
+    # Formát: desetinné číslo, max. 2 desetinné cifry, tečka jako oddělovač
+    if amount is not None:
+        parts.append(f"AM:{amount:.2f}*")
+    
+    # CC - měna (volitelná, ale pro CZK doporučeno)
+    # Formát: ISO 4217, 3 znaky, velká písmena
+    # Pro tuzemský platební styk musí být CZK
+    parts.append("CC:CZK*")
+    
+    # MSG - zpráva pro příjemce (volitelná, max 60 znaků)
+    # Speciální znaky se kódují pomocí URL encoding
+    if message:
+        msg_clean = message[:60]
+        # Zakódovat speciální znaky (hvězdička, dvojtečka atd.)
+        # Podle standardu: pouze znaky z povolené množiny, ostatní URL encoding
+        msg_encoded = url_encode_spayd(msg_clean)
+        parts.append(f"MSG:{msg_encoded}*")
+    
+    # X-VS - variabilní symbol (volitelný, max 10 znaků, celé číslo)
+    # Podle standardu verze 1.2 - rozšířené atributy pro ČR
+    if vs:
+        vs_clean = str(vs)[:10]
+        # Ověřit, že je to číslo
+        if vs_clean.isdigit():
+            parts.append(f"X-VS:{vs_clean}*")
+    
+    return "".join(parts)
+
+
+def generate_qr_code_image(spayd_string: str) -> bytes:
+    """Vygeneruje QR kód jako PNG obrázek."""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(spayd_string)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Uložit do bytes
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    
+    return img_bytes.getvalue()
+
+
+@app.get("/qr-payment")
+async def create_qr_payment(
+    amount: Optional[float] = None,
+    message: Optional[str] = "Platba",
+    iban: str = "CZ5401000001154933990227"
+):
+    """Vytvoří QR kód pro platbu s náhodným variabilním symbolem."""
+    # Generovat náhodný VS (10 číslic)
+    vs = str(random.randint(1000000000, 9999999999))
+    
+    # Vytvořit SPAYD řetězec
+    spayd_string = generate_spayd_string(
+        iban=iban,
+        amount=amount,
+        vs=vs,
+        message=message
+    )
+    
+    # Uložit do sledovaných plateb
+    tracked_payments[vs] = {
+        "iban": iban,
+        "amount": amount,
+        "vs": vs,
+        "message": message,
+        "spayd": spayd_string,
+        "created": datetime.now().isoformat(),
+        "status": "pending"
+    }
+    
+    # Vygenerovat QR kód
+    qr_image = generate_qr_code_image(spayd_string)
+    
+    return Response(content=qr_image, media_type="image/png")
+
+
+@app.get("/qr-payment-info")
+async def get_qr_payment_info():
+    """Vrátí informace o všech sledovaných platbách."""
+    return {
+        "total": len(tracked_payments),
+        "payments": [
+            {
+                **info,
+                "spayd": info.get("spayd", "")
+            }
+            for vs, info in tracked_payments.items()
+        ]
+    }
+
+
+@app.get("/qr-payment/{vs}")
+async def get_payment_status(vs: str):
+    """Vrátí status konkrétní platby podle VS."""
+    if vs not in tracked_payments:
+        raise HTTPException(status_code=404, detail=f"Platba s VS {vs} nebyla nalezena")
+    
+    return tracked_payments[vs]
 
 
 # Error handlers
