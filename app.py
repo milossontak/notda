@@ -119,6 +119,9 @@ request_history = deque(maxlen=500)  # Uchovává posledních 500 požadavků
 # Ukládání sledovaných plateb (VS -> payment info)
 tracked_payments = {}  # {vs: {"iban": "...", "amount": ..., "created": "...", "status": "pending|paid"}}
 
+# Mapování accountServicer -> VS pro detekci duplicitních plateb
+account_servicer_to_vs = {}  # {accountServicer: vs}
+
 # API klíč pro autentizaci
 # Můžete nastavit buď zde, nebo přes environment variable API_KEY
 API_KEY_ENV = os.getenv("API_KEY")
@@ -364,7 +367,7 @@ async def receive_event(
     }
     events_storage.append(event_data)
     
-    # Kontrola, zda příchozí event obsahuje platbu se sledovaným VS
+    # Kontrola, zda příchozí event obsahuje platbu se sledovaným VS nebo accountServicer
     if payload:
         transactions = []
         if payload.bookTransactions:
@@ -373,13 +376,37 @@ async def receive_event(
             transactions.extend(payload.transactionAdvices)
         
         for tx in transactions:
-            if tx.references and tx.references.variable:
+            if tx.references:
+                # Nejdříve zkontrolovat accountServicer - pokud existuje, jedná se o update existující platby
+                account_servicer = tx.references.accountServicer
                 vs = tx.references.variable
-                if vs in tracked_payments:
+                
+                # Pokud máme accountServicer a už existuje v mapování, aktualizovat existující platbu
+                if account_servicer and account_servicer in account_servicer_to_vs:
+                    existing_vs = account_servicer_to_vs[account_servicer]
+                    if existing_vs in tracked_payments:
+                        # Aktualizovat existující platbu
+                        tracked_payments[existing_vs]["status"] = "paid"
+                        tracked_payments[existing_vs]["paid_at"] = datetime.now().isoformat()
+                        tracked_payments[existing_vs]["transaction"] = tx.model_dump() if hasattr(tx, 'model_dump') else tx
+                        tracked_payments[existing_vs]["last_updated"] = datetime.now().isoformat()
+                        # Uložit accountServicer do platby, pokud tam ještě není
+                        if "account_servicer" not in tracked_payments[existing_vs]:
+                            tracked_payments[existing_vs]["account_servicer"] = account_servicer
+                        continue  # Přeskočit další kontrolu VS
+                
+                # Pokud máme VS a existuje v tracked_payments, aktualizovat podle VS
+                if vs and vs in tracked_payments:
                     # Aktualizovat status platby
                     tracked_payments[vs]["status"] = "paid"
                     tracked_payments[vs]["paid_at"] = datetime.now().isoformat()
                     tracked_payments[vs]["transaction"] = tx.model_dump() if hasattr(tx, 'model_dump') else tx
+                    tracked_payments[vs]["last_updated"] = datetime.now().isoformat()
+                    
+                    # Pokud máme accountServicer, uložit ho pro budoucí kontroly
+                    if account_servicer:
+                        tracked_payments[vs]["account_servicer"] = account_servicer
+                        account_servicer_to_vs[account_servicer] = vs
     
     return None  # 204 No Content
 
@@ -1028,21 +1055,25 @@ async def get_events_page():
             
             // Funkce pro vytvoření QR platby
             async function createQRPayment() {
-                const amount = prompt('Zadejte částku (nechte prázdné pro libovolnou částku):');
-                const message = prompt('Zadejte zprávu pro příjemce:', 'Platba');
+                const vs = prompt('Zadejte variabilní symbol (VS) - nechte prázdné pro náhodný VS:');
+                if (vs === null) {
+                    return; // Uživatel zrušil
+                }
                 
-                if (message === null) {
+                const amount = prompt('Zadejte částku (nechte prázdné pro libovolnou částku):');
+                if (amount === null) {
                     return; // Uživatel zrušil
                 }
                 
                 try {
                     const params = new URLSearchParams();
+                    if (vs && vs.trim()) {
+                        params.append('vs', vs.trim());
+                    }
                     if (amount && amount.trim()) {
                         params.append('amount', amount.trim());
                     }
-                    if (message && message.trim()) {
-                        params.append('message', message.trim());
-                    }
+                    // Text pro příjemce má výchozí hodnotu "Platba", takže ho neposíláme, pokud není změněn
                     
                     console.log('Vytvářím QR platbu s parametry:', params.toString());
                     
@@ -1308,13 +1339,17 @@ def generate_qr_code_image(spayd_string: str) -> bytes:
 
 @app.get("/qr-payment")
 async def create_qr_payment(
+    vs: Optional[str] = None,
     amount: Optional[float] = None,
     message: Optional[str] = "Platba",
     iban: str = "CZ5401000001154933990227"
 ):
-    """Vytvoří QR kód pro platbu s náhodným variabilním symbolem."""
-    # Generovat náhodný VS (10 číslic)
-    vs = str(random.randint(1000000000, 9999999999))
+    """Vytvoří QR kód pro platbu s variabilním symbolem."""
+    # Pokud VS není zadán nebo je prázdný, vygenerovat náhodný VS (10 číslic)
+    if not vs or not vs.strip():
+        vs = str(random.randint(1000000000, 9999999999))
+    else:
+        vs = vs.strip()
     
     # Vytvořit SPAYD řetězec
     spayd_string = generate_spayd_string(

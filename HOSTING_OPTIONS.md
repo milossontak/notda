@@ -4,11 +4,35 @@ Tento dokument popisuje různé možnosti hostingu vaší FastAPI aplikace na in
 
 ## 📋 Požadavky aplikace
 
-- Python 3.8+
-- FastAPI framework
-- Uvicorn ASGI server
-- Port pro HTTP (standardně 8000, ale lze změnit)
-- Možnost přijímat POST požadavky z externích systémů
+### Základní požadavky
+- **Python**: 3.11.0 (doporučeno) nebo minimálně 3.8+
+- **Framework**: FastAPI
+- **ASGI server**: Uvicorn
+- **Port**: HTTP port (standardně 8000, konfigurovatelný přes `PORT` environment variable)
+- **Síť**: Možnost přijímat POST požadavky z externích systémů
+
+### Požadavky na operační systém
+
+**✅ Jakýkoliv Linux s Pythonem 3.8+**
+
+Aplikace běží na jakémkoliv Linuxu, který má Python 3.8 nebo vyšší. Nejsou žádné specifické požadavky na distribuci Linuxu.
+
+**Podporované Linux distribuce:**
+- ✅ Ubuntu (18.04+)
+- ✅ Debian (10+)
+- ✅ CentOS/RHEL (8+)
+- ✅ Fedora (30+)
+- ✅ Alpine Linux (3.10+)
+- ✅ Amazon Linux 2
+- ✅ Jakákoliv jiná distribuce s Pythonem 3.8+
+
+**Co potřebujete:**
+1. Linux server s Pythonem 3.8+ (nebo Python 3.11.0 pro přesnou shodu s `runtime.txt`)
+2. `pip` nebo `pip3` pro instalaci závislostí
+3. Otevřený port pro HTTP (standardně 8000)
+4. Přístup k internetu pro instalaci balíčků z PyPI
+
+**Poznámka:** Aplikace je napsaná v čistém Pythonu s použitím standardních knihoven a FastAPI. Nevyžaduje žádné systémové knihovny ani specifické konfigurace Linuxu.
 
 ---
 

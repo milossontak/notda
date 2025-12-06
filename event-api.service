@@ -1,0 +1,21 @@
+[Unit]
+Description=Event API FastAPI Application
+After=network.target
+
+[Service]
+Type=simple
+User=eventapi
+Group=eventapi
+WorkingDirectory=/home/eventapi/event-api
+Environment="PATH=/home/eventapi/event-api/venv/bin"
+Environment="PORT=8000"
+Environment="HOST=0.0.0.0"
+Environment="API_KEY=your-secret-api-key-here"
+ExecStart=/home/eventapi/event-api/venv/bin/python /home/eventapi/event-api/app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

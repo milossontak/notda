@@ -76,6 +76,13 @@ Pro produkční nasazení doporučuji:
 - **Render**: https://render.com
 - **Fly.io**: https://fly.io
 
+#### 4. VPS server (CentOS/Linux)
+
+Pro nasazení na vlastní VPS server s automatickým spuštěním po bootu:
+- **Rychlý start**: Viz [CENTOS_QUICKSTART.md](CENTOS_QUICKSTART.md) - nastavení automatického spuštění po bootu
+- **Kompletní návod**: Viz [CENTOS_SETUP.md](CENTOS_SETUP.md) - podrobný návod pro CentOS
+- **Obecné možnosti hostingu**: Viz [HOSTING_OPTIONS.md](HOSTING_OPTIONS.md)
+
 ## Použití
 
 ### Webové rozhraní
