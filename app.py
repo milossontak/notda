@@ -6,7 +6,7 @@ from fastapi.exception_handlers import (
     request_validation_exception_handler,
 )
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 import re
 import traceback
@@ -32,6 +32,54 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Middleware pro bezpečnostní HTTP hlavičky
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Middleware pro přidání bezpečnostních HTTP hlaviček."""
+    response = await call_next(request)
+    
+    # Content Security Policy (CSP)
+    # Povoluje pouze stejný origin a inline skripty pro funkcionalitu aplikace
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # unsafe-inline a unsafe-eval pro inline JS v HTML
+        "style-src 'self' 'unsafe-inline'; "  # unsafe-inline pro inline CSS
+        "img-src 'self' data: blob:; "  # data: a blob: pro QR kódy a obrázky
+        "font-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "  # Nahrazuje X-Frame-Options
+        "base-uri 'self'; "
+        "form-action 'self';"
+    )
+    response.headers["Content-Security-Policy"] = csp_policy
+    
+    # Strict Transport Security (HSTS) - pouze pokud běží na HTTPS
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    
+    # X-Content-Type-Options
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # X-Frame-Options (backup, CSP frame-ancestors má přednost)
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    # Referrer Policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    # X-XSS-Protection (legacy, ale některé nástroje to očekávají)
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    
+    # Permissions Policy (dříve Feature-Policy)
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(), "
+        "microphone=(), "
+        "camera=(), "
+        "payment=(), "
+        "usb=()"
+    )
+    
+    return response
+
 # Middleware pro logování všech příchozích požadavků
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -54,7 +102,7 @@ async def log_requests(request: Request, call_next):
                 try:
                     # Zkusit parsovat jako JSON
                     body = json.loads(body_bytes.decode('utf-8'))
-                except:
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     # Pokud to není JSON, uložit jako string
                     body = body_bytes.decode('utf-8', errors='ignore')
     except Exception as e:
@@ -181,7 +229,7 @@ class GenericTransactionData(BaseModel):
     accountType: Optional[str] = None
     iban: str
     amount: CurrencyAmount
-    creditDebitIndicator: str = Field(..., enum=["CREDIT", "DEBIT"])
+    creditDebitIndicator: Literal["CREDIT", "DEBIT"]
     transactionType: Optional[str] = None
     entryReference: Optional[str] = None
     bankTransactionCode: Optional[BankTransactionCode] = None
@@ -194,7 +242,7 @@ class GenericTransactionData(BaseModel):
 
 
 class BookingInformation(BaseModel):
-    transactionType: Optional[str] = Field(None, enum=["INTEREST", "FEE", "DOMESTIC", "FOREIGN", "SEPA", "CASH", "CARD", "OTHER"])
+    transactionType: Optional[Literal["INTEREST", "FEE", "DOMESTIC", "FOREIGN", "SEPA", "CASH", "CARD", "OTHER"]] = None
     bookingDate: Optional[str] = None  # ISO date
 
 

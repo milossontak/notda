@@ -4,7 +4,20 @@ Služba pro přijímání eventů podle OpenAPI specifikace [schemas/Event-API-v
 
 ## Instalace
 
-1. Nainstalujte závislosti:
+1. Vytvořte virtualní prostředí (doporučeno):
+```bash
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# nebo
+venv\Scripts\activate     # Windows
+```
+
+2. Nainstalujte závislosti:
+```bash
+pip install -r requirements.txt
+```
+
+**Nebo bez venv:**
 ```bash
 pip3 install -r requirements.txt
 ```
@@ -13,6 +26,18 @@ pip3 install -r requirements.txt
 
 ### Lokální spuštění
 
+**S virtualním prostředím (doporučeno):**
+```bash
+# Aktivace venv
+source venv/bin/activate  # Linux/Mac
+# nebo
+venv\Scripts\activate     # Windows
+
+# Spuštění
+python app.py
+```
+
+**Bez venv:**
 ```bash
 python3 app.py
 ```
@@ -173,6 +198,37 @@ curl -X POST "http://localhost:8000/subscriptions/71f415f4-412d-4c55-af05-15d1e0
 - Eventy jsou ukládány v paměti (maximálně 1000). Pro produkci doporučuji použít databázi.
 - API klíč by měl být v produkci uložen v environment variables.
 - Pro produkční nasazení doporučuji použít HTTPS.
+
+## 📁 Struktura projektu
+
+```
+notda/
+├── app.py                      # Hlavní aplikace
+├── expose.py                   # Skript pro vystavení na internet
+├── requirements.txt            # Python závislosti
+├── README.md                   # Tento soubor
+│
+├── docs/                       # 📚 Dokumentace
+│   ├── README.md              # Index dokumentace
+│   ├── CENTOS_STREAM_10_DEPLOY.md
+│   ├── SETUP_HTTPS.md
+│   └── ...
+│
+├── scripts/                    # 🔧 Skripty
+│   ├── deployment/            # Nasazovací skripty
+│   ├── development/           # Vývojářské skripty
+│   └── tunneling/             # Tunnel skripty
+│
+├── config/                     # ⚙️ Konfigurační soubory
+│   └── event-api.service      # Systemd service
+│
+├── tests/                      # 🧪 Testy
+│   ├── test_api.py
+│   └── test_version.sh
+│
+└── schemas/                    # 📋 API schémata
+    └── Event-API-v20-SNAPSHOT.yaml
+```
 
 ## 📚 Dokumentace
 
