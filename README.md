@@ -79,9 +79,9 @@ Pro produkční nasazení doporučuji:
 #### 4. VPS server (CentOS/Linux)
 
 Pro nasazení na vlastní VPS server s automatickým spuštěním po bootu:
+- **CentOS Stream 10 z GitHubu**: Viz [CENTOS_STREAM_10_DEPLOY.md](CENTOS_STREAM_10_DEPLOY.md) ⭐ **Doporučeno pro rychlé nasazení**
 - **Rychlý start**: Viz [CENTOS_QUICKSTART.md](CENTOS_QUICKSTART.md) - nastavení automatického spuštění po bootu
 - **Kompletní návod**: Viz [CENTOS_SETUP.md](CENTOS_SETUP.md) - podrobný návod pro CentOS
-- **Obecné možnosti hostingu**: Viz [HOSTING_OPTIONS.md](HOSTING_OPTIONS.md)
 
 ## Použití
 
