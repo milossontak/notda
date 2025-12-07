@@ -17,10 +17,11 @@ fi
 
 # Zjištění cesty k projektu
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SERVICE_FILE="$SCRIPT_DIR/event-api.service"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+SERVICE_FILE="$PROJECT_ROOT/config/event-api.service"
 
 if [ ! -f "$SERVICE_FILE" ]; then
-    echo "❌ Soubor event-api.service nebyl nalezen v $SCRIPT_DIR"
+    echo "❌ Soubor event-api.service nebyl nalezen v $PROJECT_ROOT/config/"
     exit 1
 fi
 

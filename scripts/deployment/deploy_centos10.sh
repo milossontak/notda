@@ -87,7 +87,15 @@ API_KEY=${API_KEY:-your-secret-api-key-here}
 # Krok 7: Vytvoření systemd service
 echo ""
 echo "⚙️  Krok 7: Vytvoření systemd service..."
-cat > "$SERVICE_FILE" << EOF
+# Service soubor bude zkopírován z config/event-api.service
+SERVICE_TEMPLATE="$APP_DIR/config/event-api.service"
+if [ -f "$SERVICE_TEMPLATE" ]; then
+    cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
+    # Upravit cesty v service souboru
+    sed -i "s|/home/$APP_USER/event-api|$APP_DIR|g" "$SERVICE_FILE"
+else
+    # Fallback: vytvořit service soubor přímo
+    cat > "$SERVICE_FILE" << EOF
 [Unit]
 Description=Event API FastAPI Application
 After=network.target
@@ -98,9 +106,10 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 Environment="PATH=$APP_DIR/venv/bin"
-Environment="PORT=8000"
+Environment="PORT=80"
 Environment="HOST=0.0.0.0"
 Environment="API_KEY=$API_KEY"
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=$APP_DIR/venv/bin/python $APP_DIR/app.py
 Restart=always
 RestartSec=10
@@ -130,11 +139,12 @@ systemctl start event-api
 echo ""
 echo "🔥 Krok 10: Konfigurace firewallu..."
 if systemctl is-active --quiet firewalld; then
-    firewall-cmd --permanent --add-port=8000/tcp
+    firewall-cmd --permanent --add-service=http
+    firewall-cmd --permanent --add-port=80/tcp
     firewall-cmd --reload
-    echo "✓ Port 8000 otevřen ve firewallu"
+    echo "✓ Port 80 (HTTP) otevřen ve firewallu"
 else
-    echo "⚠️  Firewalld není aktivní, otevřete port 8000 ručně"
+    echo "⚠️  Firewalld není aktivní, otevřete port 80 ručně"
 fi
 
 # Krok 11: Kontrola stavu
@@ -149,5 +159,6 @@ echo "📋 Užitečné příkazy:"
 echo "  - Zobrazení stavu: sudo systemctl status event-api"
 echo "  - Zobrazení logů: sudo journalctl -u event-api -f"
 echo "  - Restart služby: sudo systemctl restart event-api"
-echo "  - Webové rozhraní: http://$(hostname -I | awk '{print $1}'):8000"
+echo "  - Webové rozhraní: http://$(hostname -I | awk '{print $1}')"
+echo "  - Health check: http://$(hostname -I | awk '{print $1}')/health"
 echo ""

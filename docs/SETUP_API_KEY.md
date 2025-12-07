@@ -83,7 +83,7 @@ if API_KEY_ENV:
 Po nastavení API klíče můžete otestovat:
 
 ```bash
-./test_version.sh
+./tests/test_version.sh
 ```
 
 Nebo ručně:

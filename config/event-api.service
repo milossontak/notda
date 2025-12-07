@@ -8,9 +8,11 @@ User=eventapi
 Group=eventapi
 WorkingDirectory=/home/eventapi/event-api
 Environment="PATH=/home/eventapi/event-api/venv/bin"
-Environment="PORT=8000"
+Environment="PORT=80"
 Environment="HOST=0.0.0.0"
 Environment="API_KEY=your-secret-api-key-here"
+# Capability pro binding na port 80 (místo spuštění jako root)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/home/eventapi/event-api/venv/bin/python /home/eventapi/event-api/app.py
 Restart=always
 RestartSec=10

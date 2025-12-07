@@ -1,6 +1,6 @@
 # Event API Service
 
-Služba pro přijímání eventů podle OpenAPI specifikace Event-API-v20-SNAPSHOT.yaml.
+Služba pro přijímání eventů podle OpenAPI specifikace [schemas/Event-API-v20-SNAPSHOT.yaml](schemas/Event-API-v20-SNAPSHOT.yaml).
 
 ## Instalace
 
@@ -79,9 +79,9 @@ Pro produkční nasazení doporučuji:
 #### 4. VPS server (CentOS/Linux)
 
 Pro nasazení na vlastní VPS server s automatickým spuštěním po bootu:
-- **CentOS Stream 10 z GitHubu**: Viz [CENTOS_STREAM_10_DEPLOY.md](CENTOS_STREAM_10_DEPLOY.md) ⭐ **Doporučeno pro rychlé nasazení**
-- **Rychlý start**: Viz [CENTOS_QUICKSTART.md](CENTOS_QUICKSTART.md) - nastavení automatického spuštění po bootu
-- **Kompletní návod**: Viz [CENTOS_SETUP.md](CENTOS_SETUP.md) - podrobný návod pro CentOS
+- **CentOS Stream 10 z GitHubu**: Viz [docs/CENTOS_STREAM_10_DEPLOY.md](docs/CENTOS_STREAM_10_DEPLOY.md) ⭐ **Doporučeno pro rychlé nasazení**
+- **Nastavení HTTPS**: Viz [docs/SETUP_HTTPS.md](docs/SETUP_HTTPS.md) - HTTPS s Nginx a Let's Encrypt
+- **Troubleshooting**: Viz [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - řešení problémů
 
 ## Použití
 
@@ -117,7 +117,9 @@ Přijímá eventy
 
 ### Konfigurace API klíče
 
-V souboru `app.py` změňte:
+Viz [docs/SETUP_API_KEY.md](docs/SETUP_API_KEY.md) pro podrobné instrukce.
+
+Nebo v souboru `app.py` změňte:
 ```python
 VALID_API_KEYS = {"123456"}  # Změňte na skutečný API klíč
 ```
@@ -134,10 +136,10 @@ VALID_API_KEYS = {"key1", "key2", "key3"}
 Nejjednodušší způsob testování:
 
 ```bash
-python3 test_api.py
+python3 tests/test_api.py
 ```
 
-Nezapomeňte předtím změnit `API_KEY` v souboru `test_api.py` na stejný klíč jako v `app.py`.
+Nezapomeňte předtím změnit `API_KEY` v souboru `tests/test_api.py` na stejný klíč jako v `app.py`.
 
 ### Manuální testování pomocí curl
 
@@ -171,4 +173,14 @@ curl -X POST "http://localhost:8000/subscriptions/71f415f4-412d-4c55-af05-15d1e0
 - Eventy jsou ukládány v paměti (maximálně 1000). Pro produkci doporučuji použít databázi.
 - API klíč by měl být v produkci uložen v environment variables.
 - Pro produkční nasazení doporučuji použít HTTPS.
+
+## 📚 Dokumentace
+
+Všechna dokumentace je umístěna ve složce [`docs/`](docs/):
+
+- **Nasazení**: [docs/CENTOS_STREAM_10_DEPLOY.md](docs/CENTOS_STREAM_10_DEPLOY.md) - Nasazení na CentOS Stream 10
+- **HTTPS**: [docs/SETUP_HTTPS.md](docs/SETUP_HTTPS.md) - Nastavení HTTPS
+- **API**: [docs/API_USAGE.md](docs/API_USAGE.md) - Použití API
+- **Troubleshooting**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Řešení problémů
+- **Kompletní seznam**: [docs/README.md](docs/README.md) - Přehled všech dokumentů
 

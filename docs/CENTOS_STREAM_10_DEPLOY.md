@@ -21,37 +21,42 @@ ssh root@VAŠE_IP_ADRESA
 # 2. Aktualizace systému
 dnf update -y
 
-# 3. Instalace Pythonu a závislostí
-dnf install -y python3 python3-pip python3-devel gcc libjpeg-devel zlib-devel git
+# 3. Instalace Git (pokud není nainstalovaný)
+dnf install -y git
 
-# 4. Vytvoření uživatele pro aplikaci
+# 4. Instalace Pythonu a závislostí
+dnf install -y python3 python3-pip python3-devel gcc libjpeg-devel zlib-devel
+
+# 5. Vytvoření uživatele pro aplikaci
 useradd -m -s /bin/bash eventapi
 
-# 5. Přepnutí na uživatele
+# 6. Přepnutí na uživatele
 su - eventapi
 
-# 6. Klonování repozitáře z GitHubu
+# 7. Klonování repozitáře z GitHubu
 cd ~
 git clone https://github.com/milossontak/notda.git event-api
 cd event-api
 
-# 7. Vytvoření virtualního prostředí
+# 8. Vytvoření virtualního prostředí
 python3 -m venv venv
 source venv/bin/activate
 
-# 8. Instalace závislostí
+# 9. Instalace závislostí
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 9. Test spuštění (volitelné)
+# 10. Test spuštění (volitelné)
+# POZOR: Pro test na portu 80 potřebujete root nebo capabilities
+# Pro test použijte port 8000: PORT=8000 python app.py
 python app.py
-# Měli byste vidět: "Spouštím server na 0.0.0.0:8000"
+# Měli byste vidět: "Spouštím server na 0.0.0.0:80"
 # Zastavte pomocí Ctrl+C
 
-# 10. Vraťte se jako root
+# 11. Vraťte se jako root
 exit
 
-# 11. Nastavení automatického spuštění po bootu
+# 12. Nastavení automatického spuštění po bootu
 # Použijte připravený skript nebo vytvořte systemd service ručně
 ```
 
@@ -73,24 +78,37 @@ ssh uživatel@VAŠE_IP_ADRESA
 sudo dnf update -y
 ```
 
-### Krok 3: Instalace Pythonu a potřebných nástrojů
+### Krok 3: Instalace Git a potřebných nástrojů
+
+**⚠️ Pokud vidíte chybu "git: command not found", nejdřív nainstalujte Git:**
+
+```bash
+# Instalace Git
+sudo dnf install -y git
+
+# Ověření instalace
+git --version
+# Mělo by zobrazit: git version 2.x.x
+```
+
+### Krok 4: Instalace Pythonu a dalších závislostí
 
 ```bash
 # Instalace Pythonu 3 (obvykle Python 3.12 na CentOS Stream 10)
-sudo dnf install -y python3 python3-pip python3-devel gcc libjpeg-devel zlib-devel git
+sudo dnf install -y python3 python3-pip python3-devel gcc libjpeg-devel zlib-devel
 
 # Ověření instalace
 python3 --version
 # Mělo by zobrazit Python 3.8 nebo vyšší
 ```
 
-### Krok 4: Vytvoření uživatele pro aplikaci
+### Krok 5: Vytvoření uživatele pro aplikaci
 
 ```bash
 sudo useradd -m -s /bin/bash eventapi
 ```
 
-### Krok 5: Klonování projektu z GitHubu
+### Krok 6: Klonování projektu z GitHubu
 
 ```bash
 # Přepnutí na uživatele
@@ -106,7 +124,7 @@ ls -la
 # Měli byste vidět: app.py, requirements.txt, atd.
 ```
 
-### Krok 6: Nastavení Python prostředí
+### Krok 7: Nastavení Python prostředí
 
 ```bash
 # Vytvoření virtualního prostředí
@@ -126,11 +144,17 @@ pip list
 # Měli byste vidět: fastapi, uvicorn, pydantic, qrcode, Pillow, atd.
 ```
 
-### Krok 7: Test spuštění aplikace
+### Krok 8: Test spuštění aplikace
 
 ```bash
 # Spuštění aplikace
 python app.py
+```
+
+**⚠️ Poznámka:** Pro testování na portu 80 potřebujete root oprávnění. Pro test použijte port 8000:
+
+```bash
+PORT=8000 python app.py
 ```
 
 Měli byste vidět:
@@ -141,9 +165,11 @@ Webové rozhraní: http://localhost:8000
 
 Otevřete v prohlížeči: `http://SERVER_IP:8000`
 
+**V produkci bude aplikace běžet na portu 80** (bez nutnosti zadávat port v URL).
+
 Pokud to funguje, zastavte aplikaci (Ctrl+C).
 
-### Krok 8: Nastavení automatického spuštění po bootu
+### Krok 9: Nastavení automatického spuštění po bootu
 
 **Vraťte se jako root:**
 ```bash
@@ -152,6 +178,10 @@ exit
 
 **Vytvořte systemd service soubor:**
 ```bash
+# Zkopírujte service soubor z projektu
+sudo cp /home/eventapi/event-api/config/event-api.service /etc/systemd/system/event-api.service
+
+# Nebo vytvořte ručně
 sudo nano /etc/systemd/system/event-api.service
 ```
 
@@ -167,9 +197,11 @@ User=eventapi
 Group=eventapi
 WorkingDirectory=/home/eventapi/event-api
 Environment="PATH=/home/eventapi/event-api/venv/bin"
-Environment="PORT=8000"
+Environment="PORT=80"
 Environment="HOST=0.0.0.0"
 Environment="API_KEY=your-secret-api-key-here"
+# Capability pro binding na port 80 (místo spuštění jako root)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/home/eventapi/event-api/venv/bin/python /home/eventapi/event-api/app.py
 Restart=always
 RestartSec=10
@@ -179,6 +211,8 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+**⚠️ Poznámka:** Port 80 vyžaduje speciální oprávnění. Používáme `AmbientCapabilities=CAP_NET_BIND_SERVICE`, což umožní neprivilegovanému uživateli bindovat na port 80 bez nutnosti spouštět službu jako root.
 
 **Nastavení oprávnění a spuštění služby:**
 ```bash
@@ -198,14 +232,17 @@ sudo systemctl start event-api
 sudo systemctl status event-api
 ```
 
-### Krok 9: Konfigurace firewallu
+### Krok 10: Konfigurace firewallu
 
 ```bash
-# Otevření portu 8000
-sudo firewall-cmd --permanent --add-port=8000/tcp
+# Otevření portu 80 (HTTP)
+sudo firewall-cmd --permanent --add-service=http
+# nebo explicitně port 80
+sudo firewall-cmd --permanent --add-port=80/tcp
 sudo firewall-cmd --reload
 
 # Ověření
+sudo firewall-cmd --list-services
 sudo firewall-cmd --list-ports
 ```
 
@@ -232,18 +269,46 @@ sudo journalctl -u event-api -f
 ### Test HTTP požadavku
 
 ```bash
-# Z serveru
-curl http://localhost:8000/health
+# Z serveru (port 80 - standardní HTTP port)
+curl http://localhost/health
+# nebo explicitně
+curl http://localhost:80/health
 
 # Z externího počítače
-curl http://SERVER_IP:8000/health
+curl http://SERVER_IP/health
+# nebo
+curl http://SERVER_IP:80/health
 ```
+
+### Restart služby na portu 80
+
+Pokud potřebujete restartovat službu, aby běžela na portu 80:
+
+```bash
+# 1. Zastavení služby
+sudo systemctl stop event-api
+
+# 2. Aktualizace service souboru (ujistěte se, že PORT=80 a AmbientCapabilities je nastaveno)
+sudo nano /etc/systemd/system/event-api.service
+
+# 3. Načtení nové konfigurace
+sudo systemctl daemon-reload
+
+# 4. Spuštění služby
+sudo systemctl start event-api
+
+# 5. Kontrola
+sudo systemctl status event-api
+sudo ss -tlnp | grep :80
+```
+
+Viz také: [RESTART_TO_PORT_80.md](RESTART_TO_PORT_80.md) pro podrobný návod.
 
 ### Webové rozhraní
 
 Otevřete v prohlížeči:
-- `http://SERVER_IP:8000` - Webové rozhraní
-- `http://SERVER_IP:8000/health` - Health check
+- `http://SERVER_IP` - Webové rozhraní (port 80 je výchozí)
+- `http://SERVER_IP/health` - Health check
 
 ---
 
@@ -298,7 +363,9 @@ sudo systemctl start event-api
 sudo journalctl -u event-api -f
 
 # Kontrola, zda port naslouchá
-sudo ss -tlnp | grep 8000
+sudo ss -tlnp | grep :80
+# nebo
+sudo ss -tlnp | grep http
 
 # Kontrola procesu
 ps aux | grep python
@@ -334,11 +401,17 @@ ls -la /home/eventapi/event-api/
 ### Port je obsazený
 
 ```bash
-# Najděte proces
-sudo lsof -i :8000
+# Najděte proces na portu 80
+sudo lsof -i :80
+# nebo
+sudo ss -tlnp | grep :80
 
 # Ukončete proces
 sudo kill -9 PID
+
+# Pokud je to webový server (např. Apache/Nginx), můžete ho zastavit
+sudo systemctl stop httpd  # Apache
+sudo systemctl stop nginx   # Nginx
 ```
 
 ### Python moduly nejsou nalezeny
@@ -368,6 +441,21 @@ git remote -v
 # Kompletní instalace na jednom řádku (jako root)
 dnf update -y && dnf install -y python3 python3-pip python3-devel gcc libjpeg-devel zlib-devel git && useradd -m -s /bin/bash eventapi && su - eventapi -c "cd ~ && git clone https://github.com/milossontak/notda.git event-api && cd event-api && python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt" && echo "✅ Instalace dokončena! Nyní nastavte systemd service."
 ```
+
+---
+
+## 🔒 Nastavení HTTPS (volitelné)
+
+Pro produkční nasazení doporučuji nastavit HTTPS pomocí Nginx a Let's Encrypt:
+
+- **Kompletní návod**: Viz [SETUP_HTTPS.md](SETUP_HTTPS.md) - nastavení HTTPS s Nginx reverse proxy
+
+**Rychlý přehled:**
+1. Instalace Nginx: `sudo dnf install -y nginx`
+2. Změna portu aplikace na 8000 (Nginx bude na 80)
+3. Konfigurace Nginx jako reverse proxy
+4. Instalace Certbot: `sudo dnf install -y certbot python3-certbot-nginx`
+5. Získání certifikátu: `sudo certbot --nginx -d your-domain.com`
 
 ---
 

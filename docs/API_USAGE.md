@@ -111,12 +111,12 @@ correlation_id = str(uuid.uuid4())
 
 ### Test /version endpointu:
 ```bash
-./test_version.sh
+./tests/test_version.sh
 ```
 
 ### Test s vlastními parametry:
 ```bash
-./test_version.sh "https://javier-multisaccate-calculably.ngrok-free.dev" "your-api-key"
+./tests/test_version.sh "https://javier-multisaccate-calculably.ngrok-free.dev" "your-api-key"
 ```
 
 ---
