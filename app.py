@@ -21,23 +21,24 @@ from collections import deque
 app = FastAPI(
     title="Event API",
     description="3rd party event API for receiving subscribed events.",
-    version="2.0.0"
+    version="2.0.0",
 )
 
 # Nastavení logování
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
 
 # Middleware pro bezpečnostní HTTP hlavičky
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """Middleware pro přidání bezpečnostních HTTP hlaviček."""
     response = await call_next(request)
-    
+
     # Content Security Policy (CSP)
     # Povoluje pouze stejný origin a inline skripty pro funkcionalitu aplikace
     csp_policy = (
@@ -52,48 +53,47 @@ async def add_security_headers(request: Request, call_next):
         "form-action 'self';"
     )
     response.headers["Content-Security-Policy"] = csp_policy
-    
+
     # Strict Transport Security (HSTS) - pouze pokud běží na HTTPS
     if request.url.scheme == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-    
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+
     # X-Content-Type-Options
     response.headers["X-Content-Type-Options"] = "nosniff"
-    
+
     # X-Frame-Options (backup, CSP frame-ancestors má přednost)
     response.headers["X-Frame-Options"] = "DENY"
-    
+
     # Referrer Policy
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    
+
     # X-XSS-Protection (legacy, ale některé nástroje to očekávají)
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    
+
     # Permissions Policy (dříve Feature-Policy)
     response.headers["Permissions-Policy"] = (
-        "geolocation=(), "
-        "microphone=(), "
-        "camera=(), "
-        "payment=(), "
-        "usb=()"
+        "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
     )
-    
+
     return response
+
 
 # Middleware pro logování všech příchozích požadavků
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Middleware pro logování všech příchozích požadavků."""
     start_time = datetime.now()
-    
+
     # Zaznamenat požadavek
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
-    
+
     # Načíst body požadavku (pokud existuje)
     body = None
     body_bytes = None
-    
+
     try:
         # Pro POST/PUT/PATCH požadavky načteme body
         if request.method in ["POST", "PUT", "PATCH"]:
@@ -101,20 +101,22 @@ async def log_requests(request: Request, call_next):
             if body_bytes:
                 try:
                     # Zkusit parsovat jako JSON
-                    body = json.loads(body_bytes.decode('utf-8'))
+                    body = json.loads(body_bytes.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     # Pokud to není JSON, uložit jako string
-                    body = body_bytes.decode('utf-8', errors='ignore')
+                    body = body_bytes.decode("utf-8", errors="ignore")
     except Exception as e:
         body = f"Error reading body: {str(e)}"
-    
+
     # Pokud jsme přečetli body, musíme vytvořit nový request s těmito daty
     # aby FastAPI mohlo také přečíst body
     if body_bytes:
+
         async def receive():
             return {"type": "http.request", "body": body_bytes}
+
         request._receive = receive
-    
+
     # Zaznamenat do historie
     request_info = {
         "timestamp": start_time.isoformat(),
@@ -126,28 +128,32 @@ async def log_requests(request: Request, call_next):
         "headers": dict(request.headers),
         "body": body,
         "status_code": None,
-        "response_time_ms": None
+        "response_time_ms": None,
     }
-    
+
     # Logovat příchozí požadavek
     logger.info(f"📥 INCOMING: {request.method} {request.url.path} from {client_ip}")
     if body:
-        logger.info(f"   Body: {json.dumps(body, ensure_ascii=False) if isinstance(body, dict) else body}")
-    
+        logger.info(
+            f"   Body: {json.dumps(body, ensure_ascii=False) if isinstance(body, dict) else body}"
+        )
+
     try:
         response = await call_next(request)
-        
+
         # Zaznamenat odpověď
         process_time = (datetime.now() - start_time).total_seconds() * 1000
         request_info["status_code"] = response.status_code
         request_info["response_time_ms"] = round(process_time, 2)
-        
+
         # Logovat odpověď
-        logger.info(f"📤 RESPONSE: {request.method} {request.url.path} -> {response.status_code} ({process_time:.2f}ms)")
-        
+        logger.info(
+            f"📤 RESPONSE: {request.method} {request.url.path} -> {response.status_code} ({process_time:.2f}ms)"
+        )
+
         # Uložit do historie
         request_history.append(request_info)
-        
+
         return response
     except Exception as e:
         process_time = (datetime.now() - start_time).total_seconds() * 1000
@@ -157,6 +163,7 @@ async def log_requests(request: Request, call_next):
         request_history.append(request_info)
         logger.error(f"❌ ERROR: {request.method} {request.url.path} -> {str(e)}")
         raise
+
 
 # Ukládání přijatých eventů (v produkci by bylo lepší použít databázi)
 events_storage = deque(maxlen=1000)  # Uchovává posledních 1000 eventů
@@ -180,8 +187,9 @@ if API_KEY_ENV:
 else:
     # Jinak použij výchozí hodnotu (změňte na svůj API klíč!)
     VALID_API_KEYS = {"123456"}  # ⚠️ ZMĚŇTE NA SVŮJ API KLÍČ!
-    print(f"⚠️  Používám výchozí API klíč. Pro produkci nastavte API_KEY environment variable nebo změňte hodnotu zde.")
-
+    print(
+        f"⚠️  Používám výchozí API klíč. Pro produkci nastavte API_KEY environment variable nebo změňte hodnotu zde."
+    )
 
 
 # Pydantic modely podle specifikace
@@ -242,7 +250,11 @@ class GenericTransactionData(BaseModel):
 
 
 class BookingInformation(BaseModel):
-    transactionType: Optional[Literal["INTEREST", "FEE", "DOMESTIC", "FOREIGN", "SEPA", "CASH", "CARD", "OTHER"]] = None
+    transactionType: Optional[
+        Literal[
+            "INTEREST", "FEE", "DOMESTIC", "FOREIGN", "SEPA", "CASH", "CARD", "OTHER"
+        ]
+    ] = None
     bookingDate: Optional[str] = None  # ISO date
 
 
@@ -323,41 +335,42 @@ class ErrorResponse(BaseModel):
 
 # Validace GUID formátu
 def validate_guid(value: str) -> bool:
-    pattern = r'^(\{{0,1}([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}\}{0,1})$'
+    pattern = r"^(\{{0,1}([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}\}{0,1})$"
     return bool(re.match(pattern, value))
 
 
 # Dependency pro Correlation ID
 # Poznámka: API klíč není vyžadován - autentizace byla odstraněna
-async def verify_correlation_id(x_correlation_id: str = Header(..., alias="x-correlation-id")):
+async def verify_correlation_id(
+    x_correlation_id: str = Header(..., alias="x-correlation-id"),
+):
     if not validate_guid(x_correlation_id):
         error_response = ErrorResponse(
-            errors=[Error(
-                message=f"Invalid correlation ID format: {x_correlation_id}",
-                additionalInfo={"parameterName": "x-correlation-id", "rejectedValue": x_correlation_id}
-            )]
+            errors=[
+                Error(
+                    message=f"Invalid correlation ID format: {x_correlation_id}",
+                    additionalInfo={
+                        "parameterName": "x-correlation-id",
+                        "rejectedValue": x_correlation_id,
+                    },
+                )
+            ]
         )
-        raise HTTPException(
-            status_code=400,
-            detail=error_response.model_dump()
-        )
+        raise HTTPException(status_code=400, detail=error_response.model_dump())
     return x_correlation_id
 
 
 @app.get("/version", tags=["Diagnostics"])
-async def get_api_version(
-    x_correlation_id: str = Depends(verify_correlation_id)
-):
+async def get_api_version(x_correlation_id: str = Depends(verify_correlation_id)):
     """API implementation version. Must return 2.0 for this API definition."""
     return VersionResponse(version="2.0")
 
 
 @app.head("/version", tags=["Diagnostics"])
-async def head_api_version(
-    x_correlation_id: str = Depends(verify_correlation_id)
-):
+async def head_api_version(x_correlation_id: str = Depends(verify_correlation_id)):
     """HEAD request for version endpoint - used for health checks."""
     from fastapi.responses import Response
+
     return Response(status_code=200)
 
 
@@ -367,54 +380,60 @@ async def health_check():
     return {
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
-        "service": "Event API v2.0"
+        "service": "Event API v2.0",
     }
 
 
 @app.post("/subscriptions/{subscriptionId}/events", tags=["Events"], status_code=204)
 async def receive_event(
-    subscriptionId: str = Path(..., description="Subscription ID. Format: GUID 128-bit: 8-4-4-4-12"),
+    subscriptionId: str = Path(
+        ..., description="Subscription ID. Format: GUID 128-bit: 8-4-4-4-12"
+    ),
     x_correlation_id: str = Depends(verify_correlation_id),
     accept_language: str = Header("CZ", alias="Accept-Language"),
-    payload: Optional[EventPayload] = None
+    payload: Optional[EventPayload] = None,
 ):
     """Endpoint for receiving subscribed events."""
     # Validace Subscription ID
     if not validate_guid(subscriptionId):
         error_response = ErrorResponse(
-            errors=[Error(
-                message=f"Invalid subscription ID format: {subscriptionId}",
-                additionalInfo={"parameterName": "subscriptionId", "rejectedValue": subscriptionId}
-            )]
+            errors=[
+                Error(
+                    message=f"Invalid subscription ID format: {subscriptionId}",
+                    additionalInfo={
+                        "parameterName": "subscriptionId",
+                        "rejectedValue": subscriptionId,
+                    },
+                )
+            ]
         )
-        raise HTTPException(
-            status_code=400,
-            detail=error_response.model_dump()
-        )
-    
+        raise HTTPException(status_code=400, detail=error_response.model_dump())
+
     # Validace Accept-Language
     if accept_language not in ["CZ", "EN"]:
         error_response = ErrorResponse(
-            errors=[Error(
-                message=f"Invalid Accept-Language value: {accept_language}",
-                additionalInfo={"parameterName": "Accept-Language", "rejectedValue": accept_language}
-            )]
+            errors=[
+                Error(
+                    message=f"Invalid Accept-Language value: {accept_language}",
+                    additionalInfo={
+                        "parameterName": "Accept-Language",
+                        "rejectedValue": accept_language,
+                    },
+                )
+            ]
         )
-        raise HTTPException(
-            status_code=400,
-            detail=error_response.model_dump()
-        )
-    
+        raise HTTPException(status_code=400, detail=error_response.model_dump())
+
     # Uložení eventu do storage
     event_data = {
         "timestamp": datetime.now().isoformat(),
         "subscriptionId": subscriptionId,
         "correlationId": x_correlation_id,
         "acceptLanguage": accept_language,
-        "payload": payload.model_dump() if payload else None
+        "payload": payload.model_dump() if payload else None,
     }
     events_storage.append(event_data)
-    
+
     # Kontrola, zda příchozí event obsahuje platbu se sledovaným VS nebo accountServicer
     if payload:
         transactions = []
@@ -422,40 +441,50 @@ async def receive_event(
             transactions.extend(payload.bookTransactions)
         if payload.transactionAdvices:
             transactions.extend(payload.transactionAdvices)
-        
+
         for tx in transactions:
             if tx.references:
                 # Nejdříve zkontrolovat accountServicer - pokud existuje, jedná se o update existující platby
                 account_servicer = tx.references.accountServicer
                 vs = tx.references.variable
-                
+
                 # Pokud máme accountServicer a už existuje v mapování, aktualizovat existující platbu
                 if account_servicer and account_servicer in account_servicer_to_vs:
                     existing_vs = account_servicer_to_vs[account_servicer]
                     if existing_vs in tracked_payments:
                         # Aktualizovat existující platbu
                         tracked_payments[existing_vs]["status"] = "paid"
-                        tracked_payments[existing_vs]["paid_at"] = datetime.now().isoformat()
-                        tracked_payments[existing_vs]["transaction"] = tx.model_dump() if hasattr(tx, 'model_dump') else tx
-                        tracked_payments[existing_vs]["last_updated"] = datetime.now().isoformat()
+                        tracked_payments[existing_vs]["paid_at"] = (
+                            datetime.now().isoformat()
+                        )
+                        tracked_payments[existing_vs]["transaction"] = (
+                            tx.model_dump() if hasattr(tx, "model_dump") else tx
+                        )
+                        tracked_payments[existing_vs]["last_updated"] = (
+                            datetime.now().isoformat()
+                        )
                         # Uložit accountServicer do platby, pokud tam ještě není
                         if "account_servicer" not in tracked_payments[existing_vs]:
-                            tracked_payments[existing_vs]["account_servicer"] = account_servicer
+                            tracked_payments[existing_vs]["account_servicer"] = (
+                                account_servicer
+                            )
                         continue  # Přeskočit další kontrolu VS
-                
+
                 # Pokud máme VS a existuje v tracked_payments, aktualizovat podle VS
                 if vs and vs in tracked_payments:
                     # Aktualizovat status platby
                     tracked_payments[vs]["status"] = "paid"
                     tracked_payments[vs]["paid_at"] = datetime.now().isoformat()
-                    tracked_payments[vs]["transaction"] = tx.model_dump() if hasattr(tx, 'model_dump') else tx
+                    tracked_payments[vs]["transaction"] = (
+                        tx.model_dump() if hasattr(tx, "model_dump") else tx
+                    )
                     tracked_payments[vs]["last_updated"] = datetime.now().isoformat()
-                    
+
                     # Pokud máme accountServicer, uložit ho pro budoucí kontroly
                     if account_servicer:
                         tracked_payments[vs]["account_servicer"] = account_servicer
                         account_servicer_to_vs[account_servicer] = vs
-    
+
     return None  # 204 No Content
 
 
@@ -605,6 +634,18 @@ async def get_events_page():
             .highlight-card.amount .value {
                 color: #27ae60;
                 font-weight: 600;
+            }
+            .credit-indicator {
+                font-size: 20px;
+                font-weight: bold;
+                display: inline-block;
+                line-height: 1;
+            }
+            .credit-indicator.credit {
+                color: #27ae60;
+            }
+            .credit-indicator.debit {
+                color: #e74c3c;
             }
             .highlight-card.counterparty {
                 border-left-color: #9b59b6;
@@ -805,6 +846,7 @@ async def get_events_page():
             let autoRefreshInterval = null;
             let lastEventCount = 0;
             let snackbarCheckInterval = null;
+            let isCheckingForNewEvents = false;
             
             function formatDate(dateString) {
                 const date = new Date(dateString);
@@ -913,9 +955,16 @@ async def get_events_page():
                     
                     return `
                         <div class="event-card">
-                            <div class="event-header">
-                                <h3>Event #${events.length - index}</h3>
-                                <div class="event-meta">
+                        <div class="event-header">
+                            <h3 style="display: flex; align-items: center; gap: 8px;">
+                                Event #${events.length - index}
+                                ${txData?.creditDebitIndicator === 'CREDIT' 
+                                    ? '<span style="font-size: 20px; color: #27ae60;" title="Příchozí transakce">↓</span>' 
+                                    : txData?.creditDebitIndicator === 'DEBIT' 
+                                    ? '<span style="font-size: 20px; color: #e74c3c;" title="Odchozí transakce">↑</span>' 
+                                    : ''}
+                            </h3>
+                            <div class="event-meta">
                                     <div><strong>Čas:</strong> ${formatDate(event.timestamp)}</div>
                                     <div><strong>Subscription ID:</strong> ${event.subscriptionId}</div>
                                     <div><strong>Correlation ID:</strong> ${event.correlationId}</div>
@@ -927,7 +976,12 @@ async def get_events_page():
                                     ${amount ? `
                                         <div class="highlight-card amount">
                                             <h4>Částka</h4>
-                                            <div class="value">${formatAmount(amount)}</div>
+                                            <div class="value" style="display: flex; align-items: center; gap: 8px;">
+                                                ${txData.creditDebitIndicator === 'CREDIT' 
+                                                    ? '<span style="font-size: 20px; color: #27ae60;" title="Příchozí transakce">↓</span>' 
+                                                    : '<span style="font-size: 20px; color: #e74c3c;" title="Odchozí transakce">↑</span>'}
+                                                ${formatAmount(amount)}
+                                            </div>
                                             <div style="font-size: 11px; color: #666; margin-top: 3px;">
                                                 ${txData.creditDebitIndicator === 'CREDIT' ? '✓ Příjem' : '✗ Výdej'}
                                             </div>
@@ -1001,7 +1055,12 @@ async def get_events_page():
                         <button class="snackbar-close" onclick="closeSnackbar('${snackbarId}')">×</button>
                     </div>
                     <div class="snackbar-content">
-                        ${amount ? `<div class="snackbar-row"><span class="snackbar-label">Částka:</span><span class="snackbar-value snackbar-amount">${formatAmount(amount)}</span></div>` : ''}
+                        ${amount ? `<div class="snackbar-row"><span class="snackbar-label">Částka:</span><span class="snackbar-value snackbar-amount" style="display: flex; align-items: center; gap: 6px;">
+                            ${txData.creditDebitIndicator === 'CREDIT' 
+                                ? '<span style="font-size: 18px; color: #27ae60;" title="Příchozí">↓</span>' 
+                                : '<span style="font-size: 18px; color: #e74c3c;" title="Odchozí">↑</span>'}
+                            ${formatAmount(amount)}
+                        </span></div>` : ''}
                         ${counterparty?.name ? `<div class="snackbar-row"><span class="snackbar-label">Protistrana:</span><span class="snackbar-value">${counterparty.name}</span></div>` : ''}
                         ${refsHtml}
                         <div class="snackbar-row" style="margin-top: 5px; font-size: 11px; color: #999;">
@@ -1034,6 +1093,11 @@ async def get_events_page():
             }
             
             async function checkForNewEvents() {
+                if (isCheckingForNewEvents) {
+                    return;
+                }
+
+                isCheckingForNewEvents = true;
                 try {
                     const response = await fetch('/events');
                     const events = await response.json();
@@ -1049,6 +1113,8 @@ async def get_events_page():
                     }
                 } catch (error) {
                     console.error('Chyba při kontrole nových eventů:', error);
+                } finally {
+                    isCheckingForNewEvents = false;
                 }
             }
             
@@ -1081,16 +1147,13 @@ async def get_events_page():
             function toggleAutoRefresh() {
                 const checkbox = document.getElementById('auto-refresh');
                 if (checkbox.checked) {
-                    autoRefreshInterval = setInterval(loadEvents, 5000); // Obnovování každých 5 sekund
-                    snackbarCheckInterval = setInterval(checkForNewEvents, 2000); // Kontrola nových eventů každé 2 sekundy
+                    if (!autoRefreshInterval) {
+                        autoRefreshInterval = setInterval(loadEvents, 5000); // Obnovování každých 5 sekund
+                    }
                 } else {
                     if (autoRefreshInterval) {
                         clearInterval(autoRefreshInterval);
                         autoRefreshInterval = null;
-                    }
-                    if (snackbarCheckInterval) {
-                        clearInterval(snackbarCheckInterval);
-                        snackbarCheckInterval = null;
                     }
                 }
             }
@@ -1279,10 +1342,7 @@ async def delete_events():
 @app.get("/requests")
 async def get_request_history():
     """API endpoint pro získání historie všech příchozích požadavků."""
-    return {
-        "total": len(request_history),
-        "requests": list(request_history)
-    }
+    return {"total": len(request_history), "requests": list(request_history)}
 
 
 @app.delete("/requests")
@@ -1299,19 +1359,25 @@ def url_encode_spayd(value: str) -> str:
     Ostatní znaky se kódují pomocí URL encoding.
     """
     import urllib.parse
+
     # Podle standardu: povolené znaky jsou alfanumerické + některé speciální
     # Pro efektivní uložení do QR kódu použít pouze povolené znaky
     # Ostatní znaky zakódovat pomocí URL encoding
     # Safe znaky: povolené znaky kromě těch, které mají speciální význam v SPAYD (*, :)
-    encoded = urllib.parse.quote(value, safe='')
+    encoded = urllib.parse.quote(value, safe="")
     return encoded
 
 
-def generate_spayd_string(iban: str, amount: Optional[float] = None, vs: Optional[str] = None, message: Optional[str] = None) -> str:
+def generate_spayd_string(
+    iban: str,
+    amount: Optional[float] = None,
+    vs: Optional[str] = None,
+    message: Optional[str] = None,
+) -> str:
     """
     Vygeneruje SPAYD řetězec podle standardu QR platby verze 1.2.
     Standard: https://qr-platba.cz/wp-content/uploads/1645-standard-qr-v1-2-cerven-2021.pdf
-    
+
     Pro tuzemský platební styk v CZK:
     - Účet musí být český IBAN (začíná CZ)
     - Měna musí být CZK
@@ -1319,31 +1385,35 @@ def generate_spayd_string(iban: str, amount: Optional[float] = None, vs: Optiona
     # Verze standardu 1.2 (účinná od 1. ledna 2022)
     # Formát hlavičky: SPD*1.2* (s hvězdičkou na konci verze)
     parts = ["SPD*1.2*"]
-    
+
     # ACC - povinný (IBAN)
     # Formát: ACC:IBAN* nebo ACC:IBAN+BIC*
     # Pro české účty: IBAN začíná CZ
     # Český IBAN: CZ + 2 kontrolní číslice + 10-24 číslic (celkem 14-28 znaků)
-    iban_clean = iban.strip().upper().replace(' ', '')
-    if not iban_clean.startswith('CZ'):
-        raise ValueError(f"Pro tuzemský platební styk v CZK musí být IBAN český (začíná CZ), zadaný: {iban_clean}")
-    
+    iban_clean = iban.strip().upper().replace(" ", "")
+    if not iban_clean.startswith("CZ"):
+        raise ValueError(
+            f"Pro tuzemský platební styk v CZK musí být IBAN český (začíná CZ), zadaný: {iban_clean}"
+        )
+
     # Validace délky českého IBAN (minimálně 14 znaků, maximálně 28 znaků)
     if len(iban_clean) < 14 or len(iban_clean) > 28:
-        raise ValueError(f"Český IBAN musí mít délku 14-28 znaků, zadaný má {len(iban_clean)}: {iban_clean}")
-    
+        raise ValueError(
+            f"Český IBAN musí mít délku 14-28 znaků, zadaný má {len(iban_clean)}: {iban_clean}"
+        )
+
     parts.append(f"ACC:{iban_clean}*")
-    
+
     # AM - částka (volitelná)
     # Formát: desetinné číslo, max. 2 desetinné cifry, tečka jako oddělovač
     if amount is not None:
         parts.append(f"AM:{amount:.2f}*")
-    
+
     # CC - měna (volitelná, ale pro CZK doporučeno)
     # Formát: ISO 4217, 3 znaky, velká písmena
     # Pro tuzemský platební styk musí být CZK
     parts.append("CC:CZK*")
-    
+
     # MSG - zpráva pro příjemce (volitelná, max 60 znaků)
     # Speciální znaky se kódují pomocí URL encoding
     if message:
@@ -1352,7 +1422,7 @@ def generate_spayd_string(iban: str, amount: Optional[float] = None, vs: Optiona
         # Podle standardu: pouze znaky z povolené množiny, ostatní URL encoding
         msg_encoded = url_encode_spayd(msg_clean)
         parts.append(f"MSG:{msg_encoded}*")
-    
+
     # X-VS - variabilní symbol (volitelný, max 10 znaků, celé číslo)
     # Podle standardu verze 1.2 - rozšířené atributy pro ČR
     if vs:
@@ -1360,7 +1430,7 @@ def generate_spayd_string(iban: str, amount: Optional[float] = None, vs: Optiona
         # Ověřit, že je to číslo
         if vs_clean.isdigit():
             parts.append(f"X-VS:{vs_clean}*")
-    
+
     return "".join(parts)
 
 
@@ -1374,14 +1444,14 @@ def generate_qr_code_image(spayd_string: str) -> bytes:
     )
     qr.add_data(spayd_string)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color="black", back_color="white")
-    
+
     # Uložit do bytes
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='PNG')
+    img.save(img_bytes, format="PNG")
     img_bytes.seek(0)
-    
+
     return img_bytes.getvalue()
 
 
@@ -1390,7 +1460,7 @@ async def create_qr_payment(
     vs: Optional[str] = None,
     amount: Optional[float] = None,
     message: Optional[str] = "Platba",
-    iban: str = "CZ5401000001154933990227"
+    iban: str = "CZ5401000001154933990227",
 ):
     """Vytvoří QR kód pro platbu s variabilním symbolem."""
     # Pokud VS není zadán nebo je prázdný, vygenerovat náhodný VS (10 číslic)
@@ -1398,15 +1468,12 @@ async def create_qr_payment(
         vs = str(random.randint(1000000000, 9999999999))
     else:
         vs = vs.strip()
-    
+
     # Vytvořit SPAYD řetězec
     spayd_string = generate_spayd_string(
-        iban=iban,
-        amount=amount,
-        vs=vs,
-        message=message
+        iban=iban, amount=amount, vs=vs, message=message
     )
-    
+
     # Uložit do sledovaných plateb
     tracked_payments[vs] = {
         "iban": iban,
@@ -1415,12 +1482,12 @@ async def create_qr_payment(
         "message": message,
         "spayd": spayd_string,
         "created": datetime.now().isoformat(),
-        "status": "pending"
+        "status": "pending",
     }
-    
+
     # Vygenerovat QR kód
     qr_image = generate_qr_code_image(spayd_string)
-    
+
     return Response(content=qr_image, media_type="image/png")
 
 
@@ -1430,12 +1497,9 @@ async def get_qr_payment_info():
     return {
         "total": len(tracked_payments),
         "payments": [
-            {
-                **info,
-                "spayd": info.get("spayd", "")
-            }
+            {**info, "spayd": info.get("spayd", "")}
             for vs, info in tracked_payments.items()
-        ]
+        ],
     }
 
 
@@ -1444,7 +1508,7 @@ async def get_payment_status(vs: str):
     """Vrátí status konkrétní platby podle VS."""
     if vs not in tracked_payments:
         raise HTTPException(status_code=404, detail=f"Platba s VS {vs} nebyla nalezena")
-    
+
     return tracked_payments[vs]
 
 
@@ -1465,9 +1529,9 @@ async def not_found_handler(request: Request, exc: HTTPException):
                 "POST /subscriptions/{subscriptionId}/events",
                 "GET /",
                 "GET /events",
-                "DELETE /events"
-            ]
-        }
+                "DELETE /events",
+            ],
+        },
     )
 
 
@@ -1482,8 +1546,8 @@ async def internal_server_error_handler(request: Request, exc: Exception):
             "status": 500,
             "error": "Internal Server Error",
             "message": error_detail,
-            "path": request.url.path
-        }
+            "path": request.url.path,
+        },
     )
 
 
@@ -1492,12 +1556,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """Handler pro validační chyby."""
     errors = []
     for error in exc.errors():
-        errors.append({
-            "field": ".".join(str(x) for x in error.get("loc", [])),
-            "message": error.get("msg", "Validation error"),
-            "type": error.get("type", "validation_error")
-        })
-    
+        errors.append(
+            {
+                "field": ".".join(str(x) for x in error.get("loc", [])),
+                "message": error.get("msg", "Validation error"),
+                "type": error.get("type", "validation_error"),
+            }
+        )
+
     return JSONResponse(
         status_code=400,
         content={
@@ -1509,14 +1575,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "errors": errors,
             "required_headers": {
                 "x-correlation-id": "GUID correlation ID (format: 8-4-4-4-12)"
-            }
+            },
         },
-        headers={"Content-Type": "application/json; charset=utf-8"}
+        headers={"Content-Type": "application/json; charset=utf-8"},
     )
 
 
 # Catch-all handler pro všechny ostatní cesty (musí být na konci, aby neinterferoval s ostatními routami)
-@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@app.api_route(
+    "/{full_path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+)
 async def catch_all_handler(request: Request, full_path: str):
     """Handler pro všechny neexistující endpointy."""
     # Speciální případ pro health check endpointy
@@ -1524,9 +1593,9 @@ async def catch_all_handler(request: Request, full_path: str):
         return {
             "status": "ok",
             "timestamp": datetime.now().isoformat(),
-            "service": "Event API v2.0"
+            "service": "Event API v2.0",
         }
-    
+
     # Vrátit 404 s informací o dostupných endpointech
     return JSONResponse(
         status_code=404,
@@ -1543,24 +1612,24 @@ async def catch_all_handler(request: Request, full_path: str):
                 "GET /",
                 "GET /events",
                 "DELETE /events",
-                "GET /health"
+                "GET /health",
             ],
-            "note": "Tato API implementuje pouze Event API v2.0 specifikaci pro přijímání eventů."
-        }
+            "note": "Tato API implementuje pouze Event API v2.0 specifikaci pro přijímání eventů.",
+        },
     )
 
 
 if __name__ == "__main__":
     import uvicorn
     import os
-    
+
     # Port lze změnit přes environment variable PORT
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
-    
+
     print(f"Spouštím server na {host}:{port}")
     print(f"Webové rozhraní: http://localhost:{port}")
-    
+
     try:
         uvicorn.run(app, host=host, port=port)
     except OSError as e:
@@ -1572,4 +1641,3 @@ if __name__ == "__main__":
         else:
             print(f"\n❌ Chyba při spuštění serveru: {e}")
         raise
-
