@@ -261,7 +261,7 @@ class BookingInformation(BaseModel):
 class TransactionAdvice(BaseModel):
     transactionType: Optional[str] = None
     bookingDate: Optional[str] = None
-    lastUpdated: str
+    lastUpdated: Optional[str] = None  # dle spec povinné, ADAA ho ale neposílá
     accountType: Optional[str] = None
     iban: str
     amount: CurrencyAmount
@@ -278,7 +278,7 @@ class TransactionAdvice(BaseModel):
 
 class CardAuthorization(BaseModel):
     holdExpirationDate: Optional[str] = None  # ISO date
-    lastUpdated: str
+    lastUpdated: Optional[str] = None  # dle spec povinné, ADAA ho ale neposílá
     accountType: Optional[str] = None
     iban: str
     amount: CurrencyAmount
@@ -297,7 +297,7 @@ class CardAuthorization(BaseModel):
 class BookTransaction(BaseModel):
     transactionType: Optional[str] = None
     bookingDate: Optional[str] = None
-    lastUpdated: str
+    lastUpdated: Optional[str] = None  # dle spec povinné, ADAA ho ale neposílá
     accountType: Optional[str] = None
     iban: str
     amount: CurrencyAmount
@@ -1570,7 +1570,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "timestamp": datetime.now().isoformat(),
             "status": 400,
             "error": "Bad Request",
-            "message": "Validation error - missing required headers",
+            "message": "Validation error",
             "path": request.url.path,
             "errors": errors,
             "required_headers": {
