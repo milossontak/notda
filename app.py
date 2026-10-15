@@ -1163,7 +1163,7 @@ async def get_events_page():
             toggleAutoRefresh();
             
             // Automatická kontrola nových eventů každé 2 sekundy
-            snackbarCheckInterval = setInterval(checkForNewEvents, 2000);
+            snackbarCheckInterval = setInterval(() => checkForNewEvents(), 2000);
             
             // Funkce pro vytvoření QR platby
             async function createQRPayment() {
@@ -1316,6 +1316,9 @@ async def get_events_page():
             checkForNewEvents = async function() {
                 await originalCheckForNewEvents();
                 loadTrackedPayments();
+                if (document.getElementById('qr-payment-section').style.display !== 'none') {
+                    loadPaymentInfo();
+                }
             };
             
             // Načíst sledované platby při načtení stránky
