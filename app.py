@@ -813,7 +813,7 @@ async def get_events_page():
                 <button onclick="clearEvents()">Vymazat vše</button>
                 <button onclick="createQRPayment()" style="background-color: #27ae60;">Vytvořit QR platbu</button>
                 <label>
-                    <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh()"> Automatické obnovování
+                    <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh()" checked> Automatické obnovování
                 </label>
             </div>
             
@@ -1160,6 +1160,7 @@ async def get_events_page():
             
             // Načtení eventů při načtení stránky
             loadEvents();
+            toggleAutoRefresh();
             
             // Automatická kontrola nových eventů každé 2 sekundy
             snackbarCheckInterval = setInterval(checkForNewEvents, 2000);
